@@ -1,11 +1,8 @@
 # Zadanie 1 (opcjonalne): Trivy na lokalnie zbudowanym obrazie Dockera
-
 ## Komenda
-
 ``` bash
 docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy image myapp:latest
 ```
-
 ## Wynik
 ```
 Report Summary
@@ -22,7 +19,6 @@ Legend:
 - '0': Clean (no security findings detected)
 ```
 # Zadanie 2 (opcjonalne): SAST z wykorzystaniem Semgrep
-
 ## Komenda
 ```bash
 docker run --rm -v "${PWD}:/src" returntocorp/semgrep semgrep scan
@@ -62,9 +58,7 @@ docker run --rm -v "${PWD}:/src" returntocorp/semgrep semgrep scan
 
           213┆ if (!new RegExp(expectedTypes).test(valueType)) {
 ```
-
 # Zadanie 3 (obowiązkowe): Przygotowanie procesu CI/CD z wykorzystaniem Trivy i Semgrep
-
 ## Plik konfiguracyjny
 ```yaml
 name: Security Scan
@@ -137,6 +131,88 @@ jobs:
           echo "Trivy container scan completed" >> $GITHUB_STEP_SUMMARY
           echo "Semgrep SAST scan completed" >> $GITHUB_STEP_SUMMARY
 ```
-
+## trigger przy pushu i pull, więc commituje
+## Link z Actions
+https://github.com/PawelMurdzek/task4_TBO/actions/runs/20284002493/job/58253166887#logs
+## Link z wynikami - 155 wykrytych podatności
+https://github.com/PawelMurdzek/task4_TBO/security/code-scanning
 
 # Zadanie 4 (obowiązkowe): Uruchomienie aplikacji lokalnie + DAST z wykorzystaniem ZAP
+
+## Komenda
+```bash
+docker run -d --name myapp-container -p 8080:8080 myapp:latest
+docker run --rm -v "${PWD}:/zap/wrk/:rw" -t zaproxy/zap-stable zap-baseline.py -t http://host.docker.internal:8080 -r zap_report.html
+```
+
+## Wyniki - 12 wykrytych podatności
+
+### Podsumowanie
+| Status | Liczba |
+|--------|--------|
+| PASS | 55 |
+| WARN-NEW | 12 |
+| FAIL-NEW | 0 |
+
+### Szczegółowa tabela wyników ZAP
+
+| Alert | Severity | Opis | URL |
+|-------|----------|------|-----|
+| Missing Anti-clickjacking Header [10020] | Medium | Brak nagłówka `X-Frame-Options` chroniącego przed clickjacking | http://host.docker.internal:8080 |
+| X-Content-Type-Options Header Missing [10021] | Low | Brak nagłówka `X-Content-Type-Options: nosniff` | 5 URLi |
+| Information Disclosure - Suspicious Comments [10027] | Info | Podejrzane komentarze w kodzie JS (Bootstrap, jQuery) | bootstrap.bundle.min.js, jquery.min.js |
+| Content Security Policy (CSP) Header Not Set [10038] | Medium | Brak nagłówka Content Security Policy | 5 URLi |
+| Non-Storable Content [10049] | Info | Zawartość nie może być cache'owana | 6 URLi |
+| Cookie without SameSite Attribute [10054] | Low | Cookie bez atrybutu `SameSite` | /students/new |
+| Permissions Policy Header Not Set [10063] | Low | Brak nagłówka Permissions Policy | 5 URLi |
+| Modern Web Application [10109] | Info | Wykryto nowoczesną aplikację webową | /students |
+| Session Management Response Identified [10112] | Info | Wykryto zarządzanie sesją | /students/new |
+| Absence of Anti-CSRF Tokens [10202] | Medium | Brak tokenów CSRF w formularzach | /students/new, /students/{id} |
+| Session ID in URL Rewrite [3] | Medium | JSESSIONID widoczny w URL | /students;jsessionid=... |
+| Insufficient Site Isolation Against Spectre [90004] | Low | Brak ochrony przed atakami Spectre | 13 URLi |
+
+## Analiza różnic między DAST a SAST/SCA
+
+### Podatności wykryte TYLKO przez DAST (ZAP), niewykryte przez SAST/SCA
+
+| Podatność | Dlaczego DAST wykrywa | Dlaczego SAST/SCA nie wykrywa |
+|-----------|----------------------|------------------------------|
+| **Missing Anti-clickjacking Header** | ZAP analizuje rzeczywiste odpowiedzi HTTP serwera i sprawdza obecność nagłówków bezpieczeństwa | SAST analizuje tylko kod źródłowy - konfiguracja nagłówków HTTP często jest w konfiguracji serwera, nie w kodzie |
+| **Content Security Policy Not Set** | Wymaga analizy nagłówków HTTP w runtime | CSP jest konfiguracją deploymentu, nie częścią kodu aplikacji |
+| **Cookie without SameSite Attribute** | ZAP widzi rzeczywiste cookies ustawiane przez serwer | Atrybuty cookies są często ustawiane przez framework (Spring) na poziomie konfiguracji runtime |
+| **Session ID in URL Rewrite** | Wykrywa faktyczne zachowanie sesji w działającej aplikacji | SAST nie widzi jak Tomcat zarządza sesjami w runtime |
+| **Absence of Anti-CSRF Tokens** | Analizuje formularze HTML w kontekście całej aplikacji | SAST może nie połączyć szablonów Thymeleaf z logiką backendową |
+| **Insufficient Site Isolation (Spectre)** | Sprawdza nagłówki `Cross-Origin-*` w odpowiedziach | To konfiguracja serwera/reverse proxy, nie kod |
+
+### Dlaczego takie różnice występują?
+
+#### 1. **Różny punkt widzenia analizy**
+- **SAST (Semgrep)** - analizuje kod źródłowy "od wewnątrz", szuka wzorców niebezpiecznego kodu
+- **SCA (Trivy)** - sprawdza znane podatności w zależnościach (CVE)
+- **DAST (ZAP)** - testuje działającą aplikację "z zewnątrz", jak prawdziwy atakujący
+
+#### 2. **Konfiguracja vs Kod**
+DAST wykrywa problemy wynikające z:
+- Konfiguracji serwera aplikacyjnego (Tomcat)
+- Ustawień frameworka (Spring Security)
+- Konfiguracji HTTP (nagłówki bezpieczeństwa)
+
+Te elementy często **nie są widoczne w kodzie źródłowym** analizowanym przez SAST.
+
+#### 3. **Kontekst runtime**
+| Aspekt | SAST | DAST |
+|--------|------|------|
+| Analiza przepływu danych | Statyczna, teoretyczna | Rzeczywista, w runtime |
+| Konfiguracja serwera | Niewidoczna | Pełna widoczność |
+| Interakcje między komponentami | Ograniczona | Pełna |
+| False positives | Więcej (brak kontekstu) | Mniej (testuje realnie) |
+
+### Wnioski
+
+| Narzędzie | Najlepsze do wykrywania |
+|-----------|------------------------|
+| **SAST** | Błędy w logice kodu, SQL Injection, XSS w kodzie, hardcoded secrets |
+| **SCA** | Znane CVE w bibliotekach, outdated dependencies |
+| **DAST** | Błędy konfiguracji, brakujące nagłówki HTTP, problemy z sesją, CSRF |
+
+**Rekomendacja:** Wszystkie trzy typy testów są komplementarne i powinny być używane razem w pipeline CI/CD dla pełnego pokrycia bezpieczeństwa.  
