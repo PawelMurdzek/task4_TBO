@@ -133,7 +133,7 @@ jobs:
 ```
 ## trigger przy pushu i pull, więc commituje
 ## Link z Actions
-https://github.com/PawelMurdzek/task4_TBO/actions/runs/20284002493/job/58253166887#logs
+https://github.com/PawelMurdzek/task4_TBO/actions/runs/20285235767
 ## Link z wynikami - 155 wykrytych podatności
 https://github.com/PawelMurdzek/task4_TBO/security/code-scanning
 
