@@ -215,4 +215,4 @@ Te elementy często **nie są widoczne w kodzie źródłowym** analizowanym prze
 | **SCA** | Znane CVE w bibliotekach, outdated dependencies |
 | **DAST** | Błędy konfiguracji, brakujące nagłówki HTTP, problemy z sesją, CSRF |
 
-**Rekomendacja:** Wszystkie trzy typy testów są komplementarne i powinny być używane razem w pipeline CI/CD dla pełnego pokrycia bezpieczeństwa.  
+Wszystkie trzy typy testów są komplementarne i powinny być używane razem w pipeline CI/CD dla pełnego pokrycia bezpieczeństwa.  
